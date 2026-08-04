@@ -857,6 +857,12 @@ pub struct UiConfig {
     pub sidebar_start_collapsed: bool,
     /// Collapsed sidebar presentation. Default: compact.
     pub sidebar_collapsed_mode: SidebarCollapsedModeConfig,
+    /// Make the sidebar collapse/expand toggle span the full sidebar width
+    /// instead of a single column, for a larger click target. Default: false.
+    pub sidebar_toggle_full_width: bool,
+    /// Height (rows) of the sidebar collapse/expand toggle, anchored to the
+    /// bottom of the sidebar. Clamped to at least 1. Default: 1.
+    pub sidebar_toggle_height: u16,
     /// Terminal width at or below which Herdr uses the mobile single-column layout. Default: 64.
     pub mobile_width_threshold: u16,
     /// Capture mouse input for Herdr's mouse UI. Default: true.
@@ -1106,6 +1112,8 @@ impl Default for UiConfig {
             sidebar_max_width: 36,
             sidebar_start_collapsed: false,
             sidebar_collapsed_mode: SidebarCollapsedModeConfig::Compact,
+            sidebar_toggle_full_width: false,
+            sidebar_toggle_height: 1,
             mobile_width_threshold: DEFAULT_MOBILE_WIDTH_THRESHOLD,
             mouse_capture: true,
             copy_on_select: true,
@@ -1596,6 +1604,22 @@ sidebar_collapsed_mode = "hidden"
             config.ui.sidebar_collapsed_mode,
             SidebarCollapsedModeConfig::Hidden
         );
+    }
+
+    #[test]
+    fn sidebar_toggle_full_width_and_height_default_and_parse() {
+        let default_config = Config::default();
+        assert!(!default_config.ui.sidebar_toggle_full_width);
+        assert_eq!(default_config.ui.sidebar_toggle_height, 1);
+
+        let toml = r#"
+[ui]
+sidebar_toggle_full_width = true
+sidebar_toggle_height = 3
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(config.ui.sidebar_toggle_full_width);
+        assert_eq!(config.ui.sidebar_toggle_height, 3);
     }
 
     #[test]

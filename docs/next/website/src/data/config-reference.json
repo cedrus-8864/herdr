@@ -654,6 +654,18 @@
           ]
         },
         {
+          "key": "ui.sidebar_toggle_full_width",
+          "type": "boolean",
+          "default": "false",
+          "description": "Make the sidebar collapse/expand toggle span the full sidebar width instead of a single column, for a larger click target."
+        },
+        {
+          "key": "ui.sidebar_toggle_height",
+          "type": "integer",
+          "default": "1",
+          "description": "Height of the sidebar collapse/expand toggle in rows, anchored to the bottom of the sidebar. Clamped to at least 1."
+        },
+        {
           "key": "ui.mobile_width_threshold",
           "type": "integer",
           "default": "64",
