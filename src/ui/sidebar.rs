@@ -1539,26 +1539,36 @@ fn render_agent_detail(
     }
 }
 
-pub(crate) fn collapsed_sidebar_toggle_rect(area: Rect) -> Rect {
-    let bottom_y = area.y + area.height.saturating_sub(1);
+/// (y, rows) for the toggle band, anchored to the sidebar's bottom edge.
+/// Rows are clamped to at least 1 and at most the sidebar's own height.
+fn sidebar_toggle_band(area: Rect, configured_height: u16) -> (u16, u16) {
+    let h = configured_height.max(1).min(area.height);
+    (area.y + area.height.saturating_sub(h), h)
+}
+
+pub(crate) fn collapsed_sidebar_toggle_rect(area: Rect, full_width: bool, height: u16) -> Rect {
     let content_w = area.width.saturating_sub(1);
     if content_w == 0 || area.height == 0 {
         return Rect::default();
     }
-    let x = area.x + content_w / 2;
-    Rect::new(x, bottom_y, 1, 1)
+    let (y, h) = sidebar_toggle_band(area, height);
+    if full_width {
+        Rect::new(area.x, y, content_w, h)
+    } else {
+        Rect::new(area.x + content_w / 2, y, 1, h)
+    }
 }
 
-pub(crate) fn expanded_sidebar_toggle_rect(area: Rect) -> Rect {
+pub(crate) fn expanded_sidebar_toggle_rect(area: Rect, full_width: bool, height: u16) -> Rect {
     if area.width <= 1 || area.height == 0 {
         return Rect::default();
     }
-    Rect::new(
-        area.x + area.width.saturating_sub(2),
-        area.y + area.height.saturating_sub(1),
-        1,
-        1,
-    )
+    let (y, h) = sidebar_toggle_band(area, height);
+    if full_width {
+        Rect::new(area.x, y, area.width.saturating_sub(1), h)
+    } else {
+        Rect::new(area.x + area.width.saturating_sub(2), y, 1, h)
+    }
 }
 
 fn render_sidebar_toggle(
@@ -1568,10 +1578,12 @@ fn render_sidebar_toggle(
     collapsed: bool,
     p: &Palette,
 ) {
+    let full_width = app.sidebar_toggle_full_width;
+    let height = app.sidebar_toggle_height;
     let toggle_area = if collapsed {
-        collapsed_sidebar_toggle_rect(area)
+        collapsed_sidebar_toggle_rect(area, full_width, height)
     } else {
-        expanded_sidebar_toggle_rect(area)
+        expanded_sidebar_toggle_rect(area, full_width, height)
     };
     if toggle_area == Rect::default() {
         return;
@@ -1582,7 +1594,21 @@ fn render_sidebar_toggle(
     } else {
         Style::default().fg(p.overlay0)
     };
-    frame.render_widget(Paragraph::new(Span::styled(icon, icon_style)), toggle_area);
+    // Larger than the original 1x1 hitbox: paint a background so the bigger
+    // click target is also visually discoverable, not just a bigger invisible zone.
+    if toggle_area.width > 1 || toggle_area.height > 1 {
+        let buf = frame.buffer_mut();
+        for y in toggle_area.y..toggle_area.y + toggle_area.height {
+            for x in toggle_area.x..toggle_area.x + toggle_area.width {
+                buf[(x, y)].set_style(Style::default().bg(p.surface_dim));
+            }
+        }
+    }
+    let icon_row = toggle_area.y + toggle_area.height / 2;
+    frame.render_widget(
+        Paragraph::new(Span::styled(icon, icon_style)).alignment(Alignment::Center),
+        Rect::new(toggle_area.x, icon_row, toggle_area.width, 1),
+    );
 }
 
 #[cfg(test)]
@@ -2042,7 +2068,7 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
             .draw(|frame| render_sidebar_toggle(&app, frame, area, false, &app.palette))
             .expect("sidebar toggle should render");
 
-        let toggle = expanded_sidebar_toggle_rect(area);
+        let toggle = expanded_sidebar_toggle_rect(area, false, 1);
         assert_eq!(
             terminal.backend().buffer()[(toggle.x, toggle.y)].symbol(),
             "«"
@@ -2052,10 +2078,74 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
     #[test]
     fn expanded_sidebar_toggle_sits_inside_sidebar_content() {
         let area = Rect::new(0, 0, 26, 20);
-        let toggle = expanded_sidebar_toggle_rect(area);
+        let toggle = expanded_sidebar_toggle_rect(area, false, 1);
 
         assert_eq!(toggle.x, area.x + area.width - 2);
         assert_eq!(toggle.y, area.y + area.height - 1);
+    }
+
+    #[test]
+    fn expanded_sidebar_toggle_full_width_spans_content_excluding_divider() {
+        let area = Rect::new(0, 0, 26, 20);
+        let toggle = expanded_sidebar_toggle_rect(area, true, 1);
+
+        assert_eq!(toggle.x, area.x);
+        assert_eq!(toggle.width, area.width - 1);
+        assert_eq!(toggle.y, area.y + area.height - 1);
+        assert_eq!(toggle.height, 1);
+    }
+
+    #[test]
+    fn collapsed_sidebar_toggle_full_width_spans_content_excluding_divider() {
+        let area = Rect::new(0, 0, 4, 20);
+        let toggle = collapsed_sidebar_toggle_rect(area, true, 1);
+
+        assert_eq!(toggle.x, area.x);
+        assert_eq!(toggle.width, area.width - 1);
+    }
+
+    #[test]
+    fn sidebar_toggle_height_is_clamped_between_one_and_area_height() {
+        let area = Rect::new(0, 0, 26, 20);
+        assert_eq!(expanded_sidebar_toggle_rect(area, false, 0).height, 1);
+        assert_eq!(expanded_sidebar_toggle_rect(area, false, 5).height, 5);
+        assert_eq!(expanded_sidebar_toggle_rect(area, false, 999).height, 20);
+    }
+
+    #[test]
+    fn sidebar_toggle_height_grows_upward_from_bottom_edge() {
+        let area = Rect::new(0, 0, 26, 20);
+        let toggle = expanded_sidebar_toggle_rect(area, true, 4);
+
+        assert_eq!(toggle.y, area.y + area.height - 4);
+        assert_eq!(toggle.height, 4);
+    }
+
+    #[test]
+    fn render_sidebar_toggle_fills_background_when_larger_than_one_cell() {
+        let mut app = crate::app::state::AppState::test_new();
+        app.sidebar_toggle_full_width = true;
+        app.sidebar_toggle_height = 2;
+        let area = Rect::new(0, 0, 26, 20);
+        let mut terminal =
+            Terminal::new(TestBackend::new(26, 20)).expect("test terminal should initialize");
+
+        terminal
+            .draw(|frame| render_sidebar_toggle(&app, frame, area, false, &app.palette))
+            .expect("sidebar toggle should render");
+
+        let toggle = expanded_sidebar_toggle_rect(area, true, 2);
+        let buffer = terminal.backend().buffer();
+        for y in toggle.y..toggle.y + toggle.height {
+            for x in toggle.x..toggle.x + toggle.width {
+                assert_eq!(buffer[(x, y)].bg, app.palette.surface_dim);
+            }
+        }
+        let icon_row = toggle.y + toggle.height / 2;
+        assert_eq!(
+            buffer[(toggle.x + toggle.width / 2, icon_row)].symbol(),
+            "«"
+        );
     }
 
     #[test]
