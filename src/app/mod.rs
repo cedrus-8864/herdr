@@ -632,6 +632,8 @@ impl App {
             sidebar_width_auto: false,
             sidebar_collapsed: config.ui.sidebar_start_collapsed,
             sidebar_collapsed_mode: config.ui.sidebar_collapsed_mode,
+            sidebar_toggle_full_width: config.ui.sidebar_toggle_full_width,
+            sidebar_toggle_height: config.ui.sidebar_toggle_height,
             sidebar_section_split,
             agent_panel_sort,
             status_indicators: config.ui.status_indicators,
@@ -1470,6 +1472,8 @@ impl App {
                 self.state.sidebar_min_width = config.ui.sidebar_min_width;
                 self.state.sidebar_max_width = config.ui.sidebar_max_width;
                 self.state.sidebar_collapsed_mode = config.ui.sidebar_collapsed_mode;
+                self.state.sidebar_toggle_full_width = config.ui.sidebar_toggle_full_width;
+                self.state.sidebar_toggle_height = config.ui.sidebar_toggle_height;
                 self.state.mobile_width_threshold = config.ui.mobile_width_threshold;
                 // Re-clamp the live width to the new bounds. No source guard — bounds
                 // always apply, including to widths owned by Persisted or Manual.
