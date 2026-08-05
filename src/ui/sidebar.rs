@@ -1590,10 +1590,12 @@ pub(crate) fn sidebar_toggle_rect(
 fn render_sidebar_separator(app: &AppState, frame: &mut Frame, sep_style: Style) {
     let footprint = app.sidebar_footprint_rect();
     let sep_x = footprint.x + footprint.width.saturating_sub(1);
+    // The band sits outside the rect the sidebar background paints.
+    let style = sep_style.bg(app.palette.sidebar_bg);
     let buf = frame.buffer_mut();
     for y in footprint.y..footprint.y + footprint.height {
         buf[(sep_x, y)].set_symbol("│");
-        buf[(sep_x, y)].set_style(sep_style);
+        buf[(sep_x, y)].set_style(style);
     }
 }
 
@@ -2310,6 +2312,7 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
         let (body, _) = split_sidebar(full_sidebar, false, true, 3);
         app.view.sidebar_rect = body;
         app.view.sidebar_full_rect = full_sidebar;
+        app.palette.sidebar_bg = ratatui::style::Color::Rgb(12, 34, 56);
         let accent = Style::default().fg(app.palette.accent);
         let mut terminal =
             Terminal::new(TestBackend::new(26, 20)).expect("test terminal should initialize");
@@ -2323,6 +2326,7 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
         for y in full_sidebar.y..full_sidebar.y + full_sidebar.height {
             assert_eq!(buffer[(sep_x, y)].symbol(), "│", "row {y}");
             assert_eq!(buffer[(sep_x, y)].fg, app.palette.accent, "row {y}");
+            assert_eq!(buffer[(sep_x, y)].bg, app.palette.sidebar_bg, "row {y}");
         }
     }
 
