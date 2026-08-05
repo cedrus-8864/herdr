@@ -841,8 +841,7 @@ fn app_for_mouse_test() -> App {
     app
 }
 
-/// Lays out the sidebar the way `compute_view` does, so tests that set the
-/// geometry by hand cannot drift from the real split.
+/// Lays out the sidebar the way `compute_view` does.
 #[cfg(test)]
 fn set_test_sidebar_layout(app: &mut App, full_sidebar: ratatui::layout::Rect) {
     let (body, toggle) = crate::ui::split_sidebar(
