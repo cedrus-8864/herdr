@@ -14,6 +14,7 @@
 - Panes can now route normal right-click gestures to mouse-reporting applications through the pane menu, `herdr pane input`, `pane.input.set`, or the `pane split --right-click pane` launch option.
 - `ui.pane_outer_borders` can now keep or hide the outside edges of split-pane borders independently from internal dividers. (#2535, thanks @dhh)
 - `theme.custom.sidebar_bg` can now give the desktop sidebar its own background without changing built-in theme defaults.
+- Added `ui.sidebar_toggle_full_width` and `ui.sidebar_toggle_height` to enlarge the sidebar collapse/expand toggle beyond its single-cell click target. An enlarged toggle reserves its band at the bottom of the sidebar. (#278)
 - Settings and `ui.status_indicators = "symbols"` can now use distinct static shapes for blocked, working, done, idle, and unknown agent states. (#2260)
 - Navigate-mode selection rows now use a dedicated per-theme cursor color, customizable via `theme.custom.selection_bg`, so the cursor stays distinguishable from the active Space and Agent highlight.
 - Copy mode now supports `B`, `E`, and `W` motions over whitespace-delimited big words. (#2270, thanks @jplew)

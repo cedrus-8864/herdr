@@ -277,6 +277,15 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Collapsed sidebar presentation: "compact" keeps the narrow status rail, "hidden" uses zero width.
 # sidebar_collapsed_mode = "compact"
 
+# Widen the sidebar collapse/expand toggle to the full sidebar width for a
+# larger click target, instead of the single-column default.
+# sidebar_toggle_full_width = false
+
+# Height of the sidebar collapse/expand toggle in rows. Values above 1 (or any
+# full-width toggle) reserve that band at the bottom of the sidebar, so the
+# panels above shrink to match. Capped at half the sidebar height.
+# sidebar_toggle_height = 1
+
 # Terminal width at or below which Herdr uses the mobile single-column layout.
 # Increase this for foldables, tablets, or wide phone terminals.
 # mobile_width_threshold = 64

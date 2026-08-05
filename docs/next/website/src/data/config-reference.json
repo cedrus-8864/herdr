@@ -663,7 +663,7 @@
           "key": "ui.sidebar_toggle_height",
           "type": "integer",
           "default": "1",
-          "description": "Height of the sidebar collapse/expand toggle in rows, anchored to the bottom of the sidebar. Clamped to at least 1."
+          "description": "Height of the sidebar collapse/expand toggle in rows, anchored to the bottom of the sidebar. Any value above 1, or any full-width toggle, reserves that band from the sidebar body so the panels above shrink to match. Clamped to at least 1 row and at most half the sidebar height."
         },
         {
           "key": "ui.mobile_width_threshold",
