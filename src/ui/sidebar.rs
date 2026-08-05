@@ -754,8 +754,7 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
         return;
     }
     if area.height == 0 {
-        // The toggle band can take every row the sidebar has on a very short
-        // terminal. Bailing here would leave it clickable but never drawn.
+        // The band can take every row; bailing would leave it clickable but undrawn.
         render_sidebar_toggle(app, frame, &app.palette);
         return;
     }
@@ -987,8 +986,6 @@ pub(super) fn render_sidebar(
         Style::default().fg(p.surface_dim)
     };
 
-    // Chrome spans the whole footprint, including any band reserved for the
-    // toggle, so the divider column reads as one unbroken edge in every mode.
     render_sidebar_separator(app, frame, sep_style);
 
     let (ws_area, detail_area) = expanded_sidebar_sections(area, app.sidebar_section_split);
@@ -1537,19 +1534,14 @@ fn render_agent_detail(
     }
 }
 
-/// Rows the toggle occupies at the bottom of the sidebar. At least 1, and
-/// never more than half the sidebar, so an absurd configured height cannot
-/// turn the whole sidebar into one collapse button.
+/// Capped at half the sidebar so an absurd height cannot swallow it whole.
 fn sidebar_toggle_rows(area: Rect, configured_height: u16) -> u16 {
     let max_rows = (area.height / 2).max(1);
     configured_height.clamp(1, max_rows)
 }
 
-/// Rows the toggle carves out of the sidebar body. The legacy single-cell
-/// toggle overlapped the bottom row and reserved nothing, so it stays at zero;
-/// a widened or taller toggle must reserve its band, otherwise section layout,
-/// scroll metrics, and hit-testing disagree about who owns those rows and the
-/// content underneath becomes unclickable.
+/// Zero for the legacy single cell, which overlaps the bottom row instead of
+/// reserving it.
 fn sidebar_toggle_reserved_rows(area: Rect, full_width: bool, height: u16) -> u16 {
     let rows = sidebar_toggle_rows(area, height);
     if full_width || rows > 1 {
@@ -1559,8 +1551,7 @@ fn sidebar_toggle_reserved_rows(area: Rect, full_width: bool, height: u16) -> u1
     }
 }
 
-/// The toggle's own band, anchored to the sidebar's bottom edge. The last
-/// column always belongs to the resize divider, so the band stops short of it.
+/// Anchored to the sidebar's bottom edge, stopping short of the divider column.
 pub(crate) fn sidebar_toggle_rect(
     area: Rect,
     collapsed: bool,
@@ -1573,15 +1564,10 @@ pub(crate) fn sidebar_toggle_rect(
     }
     let h = sidebar_toggle_rows(area, height);
     let y = area.y + area.height.saturating_sub(h);
-    // Whenever the toggle reserves rows it owns the whole band: a narrow
-    // toggle on reserved rows would leave the rest of them drawn by nobody and
-    // clickable by nobody.
+    // Reserved rows must be filled, or they are drawn and clicked by nobody.
     if sidebar_toggle_reserved_rows(area, full_width, height) > 0 {
         return Rect::new(area.x, y, content_w, h);
     }
-    // Legacy single cell, which reserves nothing and overlaps the bottom row.
-    // The collapsed rail centres it; the expanded sidebar tucks it against the
-    // divider.
     let x = if collapsed {
         area.x + content_w / 2
     } else {
@@ -1590,9 +1576,8 @@ pub(crate) fn sidebar_toggle_rect(
     Rect::new(x, y, 1, h)
 }
 
-/// Draws the sidebar's right-edge divider column down the full footprint --
-/// `body` plus any reserved toggle band -- so the edge never changes colour
-/// partway down when the toggle owns the bottom rows.
+/// Spans the full footprint, so the edge does not change colour where the
+/// toggle owns the bottom rows.
 fn render_sidebar_separator(app: &AppState, frame: &mut Frame, sep_style: Style) {
     let footprint = app.sidebar_footprint_rect();
     let sep_x = footprint.x + footprint.width.saturating_sub(1);
@@ -1603,8 +1588,7 @@ fn render_sidebar_separator(app: &AppState, frame: &mut Frame, sep_style: Style)
     }
 }
 
-/// Splits the sidebar's full footprint into the content body and the toggle
-/// band. One call so the two can never be derived inconsistently.
+/// One call, so body and band can never be derived inconsistently.
 pub(crate) fn split_sidebar(
     area: Rect,
     collapsed: bool,
@@ -1624,9 +1608,8 @@ pub(crate) fn split_sidebar(
     )
 }
 
-/// Draws the collapse/expand toggle into the band `compute_view` reserved for
-/// it (`view.sidebar_toggle_rect`), so the drawn button and the clickable
-/// region can never disagree.
+/// Draws into the band `compute_view` reserved, so drawn and clickable regions
+/// cannot disagree.
 fn render_sidebar_toggle(app: &AppState, frame: &mut Frame, p: &Palette) {
     let toggle_area = app.view.sidebar_toggle_rect;
     if toggle_area.width == 0 || toggle_area.height == 0 {
@@ -1639,20 +1622,15 @@ fn render_sidebar_toggle(app: &AppState, frame: &mut Frame, p: &Palette) {
     } else {
         Style::default().fg(p.overlay0)
     };
-    // Bigger than the legacy single cell: paint a surface so the widened click
-    // target is visually discoverable, not just a larger invisible zone. Uses
-    // surface1 (hover/active) rather than surface_dim, which already means
-    // "separator" and "active workspace row" elsewhere in this sidebar.
+    // surface1, not surface_dim, which already means separator and active row here.
+    // set_style intersects with the buffer, so a stale larger view clips not panics.
     if toggle_area.width > 1 || toggle_area.height > 1 {
-        // Buffer::set_style intersects with the buffer's own area, so a view
-        // computed against a larger terminal clips instead of panicking.
         frame
             .buffer_mut()
             .set_style(toggle_area, Style::default().bg(p.surface1));
     }
-    // An even band has no true middle row, so bias the icon to the upper of
-    // the two: a glyph sitting on the lower row reads as bottom-heavy against
-    // the band's background. Odd heights still land dead centre.
+    // An even band has no middle row; bias upward, since the lower row reads
+    // as bottom-heavy.
     let icon_row = toggle_area.y + (toggle_area.height.saturating_sub(1)) / 2;
     frame.render_widget(
         Paragraph::new(Span::styled(icon, icon_style)).alignment(Alignment::Center),
@@ -2160,7 +2138,6 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
         let area = Rect::new(0, 0, 26, 20);
         assert_eq!(sidebar_toggle_rect(area, false, false, 0).height, 1);
         assert_eq!(sidebar_toggle_rect(area, false, false, 5).height, 5);
-        // Capped at half the sidebar so an absurd value cannot swallow it.
         assert_eq!(sidebar_toggle_rect(area, false, false, 999).height, 10);
         // A sidebar too short to halve still yields a usable single row.
         assert_eq!(
@@ -2171,8 +2148,6 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
 
     #[test]
     fn a_reserved_band_is_exactly_the_toggle_rect() {
-        // Reserving rows the toggle does not fill would leave a region drawn by
-        // nobody and clickable by nobody, so the two must coincide exactly.
         let area = Rect::new(0, 0, 26, 20);
         for collapsed in [false, true] {
             for full_width in [false, true] {
@@ -2200,9 +2175,6 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
 
     #[test]
     fn sidebar_separator_keeps_one_style_across_a_reserved_toggle_band() {
-        // The divider column is chrome for the whole sidebar. Drawing it only
-        // over the body left the band rows a different colour in Navigate mode,
-        // where the rest of the column is accent.
         let full_sidebar = Rect::new(0, 0, 26, 20);
         let mut app = crate::app::state::AppState::test_new();
         app.sidebar_toggle_full_width = true;
@@ -2230,11 +2202,9 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
     fn only_an_enlarged_toggle_reserves_rows_from_the_sidebar_body() {
         let area = Rect::new(0, 0, 26, 20);
 
-        // Default 1x1 toggle overlaps the bottom row exactly as it always has.
         assert_eq!(split_sidebar(area, false, false, 1).0, area);
 
-        // Widening or growing it carves a band out of the body instead, and the
-        // band always picks up exactly the rows the body gave away.
+        // The band picks up exactly the rows the body gave away.
         for (full_width, height, expected_body_h) in [(true, 1u16, 19u16), (false, 3, 17)] {
             let (body, toggle) = split_sidebar(area, false, full_width, height);
             assert_eq!(
@@ -2296,8 +2266,7 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
 
     #[test]
     fn sidebar_toggle_icon_biases_to_the_upper_middle_row() {
-        // An even band has no true middle row, so the icon rounds upward:
-        // 2 rows -> first row, 4 rows -> second row. Odd heights stay centred.
+        // Even bands round upward: 2 rows -> first, 4 rows -> second.
         let full_sidebar = Rect::new(0, 0, 26, 20);
         for (height, expected_offset) in [(1u16, 0u16), (2, 0), (3, 1), (4, 1), (5, 2), (6, 2)] {
             let mut app = crate::app::state::AppState::test_new();

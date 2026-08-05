@@ -799,14 +799,10 @@ pub enum ViewLayout {
 
 pub struct ViewState {
     pub layout: ViewLayout,
-    /// Sidebar content area, excluding any band reserved for the collapse
-    /// toggle. Sidebar layout, scrolling, and hit-testing all work from this.
+    /// Sidebar content only; excludes any band reserved for the collapse toggle.
     pub sidebar_rect: Rect,
-    /// The collapse/expand toggle's own band, carved off the sidebar's bottom.
     pub sidebar_toggle_rect: Rect,
-    /// The sidebar's whole footprint: `sidebar_rect` plus the toggle band.
-    /// Chrome that spans the sidebar edge-to-edge, and mouse routing deciding
-    /// whether a click landed in the sidebar at all, work from this.
+    /// `sidebar_rect` plus the toggle band.
     pub sidebar_full_rect: Rect,
     pub workspace_card_areas: Vec<WorkspaceCardArea>,
     pub tab_bar_rect: Rect,

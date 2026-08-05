@@ -236,10 +236,7 @@ fn compute_view_internal(
     let [full_sidebar_area, main_area] =
         Layout::horizontal([Constraint::Length(sidebar_w), Constraint::Min(1)]).areas(area);
 
-    // The toggle band is carved off the sidebar's bottom once, here, so every
-    // consumer downstream — section layout, scroll metrics, hit-testing — sees
-    // the same content area and nothing ends up drawn under an unclickable
-    // button.
+    // Split once here, so layout, scroll metrics, and hit-testing cannot disagree.
     let (sidebar_area, sidebar_toggle_rect) = split_sidebar(
         full_sidebar_area,
         app.sidebar_collapsed,

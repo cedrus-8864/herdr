@@ -256,8 +256,7 @@ impl App {
 
 impl AppState {
     pub(super) fn onboarding_full_area(&self) -> Rect {
-        // Footprint, not the content rect, or overlays centred from this land a
-        // row off from where render() draws them against the full frame.
+        // Footprint, or overlays centred from this land a row off from render().
         self.sidebar_footprint_rect().union(self.view.terminal_area)
     }
 
