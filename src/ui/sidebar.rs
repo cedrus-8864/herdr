@@ -758,7 +758,13 @@ fn workspace_selection_background(p: &Palette, is_active: bool) -> Color {
 
 /// Collapsed sidebar: workspace glance on top, compact agent list below.
 pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: Rect) {
-    if area.width == 0 || area.height == 0 {
+    if area.width == 0 {
+        return;
+    }
+    if area.height == 0 {
+        // The toggle band can take every row the sidebar has on a very short
+        // terminal. Bailing here would leave it clickable but never drawn.
+        render_sidebar_toggle(app, frame, &app.palette);
         return;
     }
 
@@ -773,7 +779,7 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
     } else {
         Style::default().fg(p.surface_dim)
     };
-    render_sidebar_separator(app, frame, area, sep_style);
+    render_sidebar_separator(app, frame, sep_style);
 
     let (ws_area, divider_y, detail_area) = collapsed_sidebar_sections(area);
     if ws_area == Rect::default() {
@@ -992,7 +998,7 @@ pub(super) fn render_sidebar(
 
     // Chrome spans the whole footprint, including any band reserved for the
     // toggle, so the divider column reads as one unbroken edge in every mode.
-    render_sidebar_separator(app, frame, area, sep_style);
+    render_sidebar_separator(app, frame, sep_style);
 
     let (ws_area, detail_area) = expanded_sidebar_sections(area, app.sidebar_section_split);
 
@@ -1576,11 +1582,15 @@ pub(crate) fn sidebar_toggle_rect(
     }
     let h = sidebar_toggle_rows(area, height);
     let y = area.y + area.height.saturating_sub(h);
-    if full_width {
+    // Whenever the toggle reserves rows it owns the whole band: a narrow
+    // toggle on reserved rows would leave the rest of them drawn by nobody and
+    // clickable by nobody.
+    if sidebar_toggle_reserved_rows(area, full_width, height) > 0 {
         return Rect::new(area.x, y, content_w, h);
     }
-    // Collapsed rail centres its single column; the expanded sidebar tucks it
-    // against the divider.
+    // Legacy single cell, which reserves nothing and overlaps the bottom row.
+    // The collapsed rail centres it; the expanded sidebar tucks it against the
+    // divider.
     let x = if collapsed {
         area.x + content_w / 2
     } else {
@@ -1592,15 +1602,8 @@ pub(crate) fn sidebar_toggle_rect(
 /// Draws the sidebar's right-edge divider column down the full footprint --
 /// `body` plus any reserved toggle band -- so the edge never changes colour
 /// partway down when the toggle owns the bottom rows.
-fn render_sidebar_separator(app: &AppState, frame: &mut Frame, body: Rect, sep_style: Style) {
-    let full = app.view.sidebar_full_rect;
-    // Fall back to the body when no footprint was recorded, so a caller that
-    // renders without going through compute_view still draws its own edge.
-    let footprint = if full.width == 0 || full.height == 0 {
-        body
-    } else {
-        full
-    };
+fn render_sidebar_separator(app: &AppState, frame: &mut Frame, sep_style: Style) {
+    let footprint = app.sidebar_footprint_rect();
     let sep_x = footprint.x + footprint.width.saturating_sub(1);
     let buf = frame.buffer_mut();
     for y in footprint.y..footprint.y + footprint.height {
@@ -1650,12 +1653,11 @@ fn render_sidebar_toggle(app: &AppState, frame: &mut Frame, p: &Palette) {
     // surface1 (hover/active) rather than surface_dim, which already means
     // "separator" and "active workspace row" elsewhere in this sidebar.
     if toggle_area.width > 1 || toggle_area.height > 1 {
-        let buf = frame.buffer_mut();
-        for y in toggle_area.y..toggle_area.y + toggle_area.height {
-            for x in toggle_area.x..toggle_area.x + toggle_area.width {
-                buf[(x, y)].set_style(Style::default().bg(p.surface1));
-            }
-        }
+        // Buffer::set_style intersects with the buffer's own area, so a view
+        // computed against a larger terminal clips instead of panicking.
+        frame
+            .buffer_mut()
+            .set_style(toggle_area, Style::default().bg(p.surface1));
     }
     // An even band has no true middle row, so bias the icon to the upper of
     // the two: a glyph sitting on the lower row reads as bottom-heavy against
@@ -2296,6 +2298,35 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
     }
 
     #[test]
+    fn a_reserved_band_is_exactly_the_toggle_rect() {
+        // Reserving rows the toggle does not fill would leave a region drawn by
+        // nobody and clickable by nobody, so the two must coincide exactly.
+        let area = Rect::new(0, 0, 26, 20);
+        for collapsed in [false, true] {
+            for full_width in [false, true] {
+                for height in [1u16, 2, 3, 999] {
+                    let (body, toggle) = split_sidebar(area, collapsed, full_width, height);
+                    let reserved = area.height - body.height;
+                    if reserved == 0 {
+                        // Legacy single cell overlapping the bottom row.
+                        assert_eq!(
+                            (toggle.width, toggle.height),
+                            (1, 1),
+                            "{collapsed}/{full_width}/{height}"
+                        );
+                        continue;
+                    }
+                    assert_eq!(
+                        toggle,
+                        Rect::new(area.x, body.y + body.height, area.width - 1, reserved),
+                        "band must fill the reserved rows for {collapsed}/{full_width}/{height}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn sidebar_separator_keeps_one_style_across_a_reserved_toggle_band() {
         // The divider column is chrome for the whole sidebar. Drawing it only
         // over the body left the band rows a different colour in Navigate mode,
@@ -2312,7 +2343,7 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
             Terminal::new(TestBackend::new(26, 20)).expect("test terminal should initialize");
 
         terminal
-            .draw(|frame| render_sidebar_separator(&app, frame, body, accent))
+            .draw(|frame| render_sidebar_separator(&app, frame, accent))
             .expect("separator should render");
 
         let sep_x = full_sidebar.width - 1;
@@ -2379,14 +2410,14 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
             for x in toggle.x..toggle.x + toggle.width {
                 assert_eq!(buffer[(x, y)].bg, app.palette.surface1);
             }
-            // The band stops short of the divider column, which is the
-            // sidebar's own chrome -- see the separator test.
-            assert_ne!(full_sidebar.width - 1, toggle.x + toggle.width - 1);
         }
+        // The band stops short of the divider column, which is the sidebar's
+        // own chrome -- see the separator test.
+        assert!(toggle.x + toggle.width <= full_sidebar.width - 1);
         // Explicit row, not a recomputation of the render's own expression:
         // a 2-row band puts the icon on its upper row.
         assert_eq!(
-            buffer[(toggle.x + toggle.width / 2, toggle.y)].symbol(),
+            buffer[(toggle.x + (toggle.width - 1) / 2, toggle.y)].symbol(),
             "«"
         );
     }
@@ -2413,7 +2444,8 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
 
             let toggle = app.view.sidebar_toggle_rect;
             assert_eq!(toggle.height, height, "band height for {height}");
-            let icon_x = toggle.x + toggle.width / 2;
+            // Alignment::Center places a single cell at (width - 1) / 2.
+            let icon_x = toggle.x + (toggle.width - 1) / 2;
             let buffer = terminal.backend().buffer();
             for offset in 0..toggle.height {
                 let expected = if offset == expected_offset { "«" } else { " " };
