@@ -1639,7 +1639,10 @@ fn render_sidebar_toggle(app: &AppState, frame: &mut Frame, collapsed: bool, p: 
             buf[(sep_x, y)].set_style(Style::default().fg(p.surface_dim));
         }
     }
-    let icon_row = toggle_area.y + toggle_area.height / 2;
+    // An even band has no true middle row, so bias the icon to the upper of
+    // the two: a glyph sitting on the lower row reads as bottom-heavy against
+    // the band's background. Odd heights still land dead centre.
+    let icon_row = toggle_area.y + (toggle_area.height.saturating_sub(1)) / 2;
     frame.render_widget(
         Paragraph::new(Span::styled(icon, icon_style)).alignment(Alignment::Center),
         Rect::new(toggle_area.x, icon_row, toggle_area.width, 1),
@@ -2232,11 +2235,45 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
             // Right edge stays unbroken across the reserved band.
             assert_eq!(buffer[(full_sidebar.width - 1, y)].symbol(), "│");
         }
-        let icon_row = toggle.y + toggle.height / 2;
+        // Explicit row, not a recomputation of the render's own expression:
+        // a 2-row band puts the icon on its upper row.
         assert_eq!(
-            buffer[(toggle.x + toggle.width / 2, icon_row)].symbol(),
+            buffer[(toggle.x + toggle.width / 2, toggle.y)].symbol(),
             "«"
         );
+    }
+
+    #[test]
+    fn sidebar_toggle_icon_biases_to_the_upper_middle_row() {
+        // An even band has no true middle row, so the icon rounds upward:
+        // 2 rows -> first row, 4 rows -> second row. Odd heights stay centred.
+        let full_sidebar = Rect::new(0, 0, 26, 20);
+        for (height, expected_offset) in [(1u16, 0u16), (2, 0), (3, 1), (4, 1), (5, 2), (6, 2)] {
+            let mut app = crate::app::state::AppState::test_new();
+            app.sidebar_toggle_full_width = true;
+            app.sidebar_toggle_height = height;
+            app.view.sidebar_rect = sidebar_body_rect(full_sidebar, true, height);
+            app.view.sidebar_toggle_rect = expanded_sidebar_toggle_rect(full_sidebar, true, height);
+            let mut terminal =
+                Terminal::new(TestBackend::new(26, 20)).expect("test terminal should initialize");
+
+            terminal
+                .draw(|frame| render_sidebar_toggle(&app, frame, false, &app.palette))
+                .expect("sidebar toggle should render");
+
+            let toggle = app.view.sidebar_toggle_rect;
+            assert_eq!(toggle.height, height, "band height for {height}");
+            let icon_x = toggle.x + toggle.width / 2;
+            let buffer = terminal.backend().buffer();
+            for offset in 0..toggle.height {
+                let expected = if offset == expected_offset { "«" } else { " " };
+                assert_eq!(
+                    buffer[(icon_x, toggle.y + offset)].symbol(),
+                    expected,
+                    "height {height}, row offset {offset}"
+                );
+            }
+        }
     }
 
     #[test]
