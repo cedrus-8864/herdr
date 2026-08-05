@@ -79,12 +79,11 @@ pub(crate) use self::{
         agent_entry_gap, agent_entry_height_in_body, agent_panel_body_rect, agent_panel_entries,
         agent_panel_scroll_for_target, agent_panel_scroll_metrics, agent_panel_scrollbar_rect,
         agent_panel_toggle_rect, all_agent_panel_entries, collapsed_sidebar_sections,
-        collapsed_sidebar_toggle_rect, compute_workspace_card_areas, expanded_sidebar_sections,
-        expanded_sidebar_toggle_rect, normalized_workspace_scroll, sidebar_body_rect,
-        sidebar_section_divider_rect, workspace_drop_slots, workspace_group_chevron_rect,
-        workspace_list_entries, workspace_list_entries_expanded, workspace_list_rect,
-        workspace_list_scroll_metrics, workspace_list_scrollbar_rect, workspace_parent_group_state,
-        AgentPanelEntry, WorkspaceListEntry,
+        compute_workspace_card_areas, expanded_sidebar_sections, normalized_workspace_scroll,
+        sidebar_section_divider_rect, split_sidebar, workspace_drop_slots,
+        workspace_group_chevron_rect, workspace_list_entries, workspace_list_entries_expanded,
+        workspace_list_rect, workspace_list_scroll_metrics, workspace_list_scrollbar_rect,
+        workspace_parent_group_state, AgentPanelEntry, WorkspaceListEntry,
     },
 };
 
@@ -241,21 +240,9 @@ fn compute_view_internal(
     // consumer downstream — section layout, scroll metrics, hit-testing — sees
     // the same content area and nothing ends up drawn under an unclickable
     // button.
-    let sidebar_toggle_rect = if app.sidebar_collapsed {
-        collapsed_sidebar_toggle_rect(
-            full_sidebar_area,
-            app.sidebar_toggle_full_width,
-            app.sidebar_toggle_height,
-        )
-    } else {
-        expanded_sidebar_toggle_rect(
-            full_sidebar_area,
-            app.sidebar_toggle_full_width,
-            app.sidebar_toggle_height,
-        )
-    };
-    let sidebar_area = sidebar_body_rect(
+    let (sidebar_area, sidebar_toggle_rect) = split_sidebar(
         full_sidebar_area,
+        app.sidebar_collapsed,
         app.sidebar_toggle_full_width,
         app.sidebar_toggle_height,
     );
@@ -331,6 +318,7 @@ fn compute_view_internal(
         layout: ViewLayout::Desktop,
         sidebar_rect: sidebar_area,
         sidebar_toggle_rect,
+        sidebar_full_rect: full_sidebar_area,
         workspace_card_areas,
         tab_bar_rect,
         tab_hit_areas: tab_bar_view.tab_hit_areas,
@@ -395,6 +383,7 @@ fn compute_mobile_view(
         layout: ViewLayout::Mobile,
         sidebar_rect: Rect::default(),
         sidebar_toggle_rect: Rect::default(),
+        sidebar_full_rect: Rect::default(),
         workspace_card_areas: Vec::new(),
         tab_bar_rect: Rect::default(),
         tab_hit_areas: Vec::new(),

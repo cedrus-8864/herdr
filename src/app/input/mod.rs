@@ -825,19 +825,19 @@ fn app_for_mouse_test() -> App {
     app
 }
 
-/// Mirrors how `compute_view` splits the sidebar into a content rect plus the
-/// toggle band, so tests that set the layout by hand stay consistent with the
-/// real geometry instead of drifting from it.
+/// Lays out the sidebar the way `compute_view` does, so tests that set the
+/// geometry by hand cannot drift from the real split.
 #[cfg(test)]
 fn set_test_sidebar_layout(app: &mut App, full_sidebar: ratatui::layout::Rect) {
-    let full_width = app.state.sidebar_toggle_full_width;
-    let height = app.state.sidebar_toggle_height;
-    app.state.view.sidebar_toggle_rect = if app.state.sidebar_collapsed {
-        crate::ui::collapsed_sidebar_toggle_rect(full_sidebar, full_width, height)
-    } else {
-        crate::ui::expanded_sidebar_toggle_rect(full_sidebar, full_width, height)
-    };
-    app.state.view.sidebar_rect = crate::ui::sidebar_body_rect(full_sidebar, full_width, height);
+    let (body, toggle) = crate::ui::split_sidebar(
+        full_sidebar,
+        app.state.sidebar_collapsed,
+        app.state.sidebar_toggle_full_width,
+        app.state.sidebar_toggle_height,
+    );
+    app.state.view.sidebar_rect = body;
+    app.state.view.sidebar_toggle_rect = toggle;
+    app.state.view.sidebar_full_rect = full_sidebar;
 }
 
 #[cfg(test)]
