@@ -2288,7 +2288,7 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
         }
         // The band stops short of the divider column, which is the sidebar's
         // own chrome -- see the separator test.
-        assert!(toggle.x + toggle.width <= full_sidebar.width - 1);
+        assert!(toggle.x + toggle.width < full_sidebar.width);
         // Explicit row, not a recomputation of the render's own expression:
         // a 2-row band puts the icon on its upper row.
         assert_eq!(
