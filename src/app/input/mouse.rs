@@ -964,9 +964,7 @@ impl AppState {
                 }
             }
 
-            // The toggle band is a button, not a list: a wheel there used to
-            // land on the agent panel, and once the band was reserved it fell
-            // through to changing the workspace selection instead.
+            // The band is a button, not a list; a wheel there moved the selection.
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
                 if in_sidebar && self.on_sidebar_toggle(mouse.column, mouse.row) => {}
 
@@ -1220,9 +1218,8 @@ impl AppState {
     }
 
     pub(super) fn screen_rect(&self) -> Rect {
-        // Footprint, not the content rect: modals are centred from this while
-        // render() centres them from the full frame, so a short rect here
-        // offsets every modal's clickable area from where it is drawn.
+        // Footprint: render() centres modals from the full frame, so a short
+        // rect here offsets every modal's click target from where it is drawn.
         let sidebar = self.sidebar_footprint_rect();
         let terminal = self.view.terminal_area;
         let x = sidebar.x.min(terminal.x);
