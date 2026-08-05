@@ -240,7 +240,7 @@ impl AppState {
         // The divider column runs the sidebar's whole footprint, including any
         // band reserved for the toggle, so it stays draggable everywhere it is
         // drawn. The toggle itself never reaches this column.
-        let sidebar = self.sidebar_hit_rect();
+        let sidebar = self.sidebar_footprint_rect();
         sidebar.width > 0
             && col == sidebar.x + sidebar.width.saturating_sub(1)
             && row >= sidebar.y
@@ -248,10 +248,10 @@ impl AppState {
     }
 
     /// The sidebar's whole footprint: its content rect plus the band reserved
-    /// for the collapse toggle. Chrome and mouse routing must use this, not
-    /// `view.sidebar_rect`, or a reserved band would be treated as landing
-    /// outside the sidebar entirely.
-    pub(super) fn sidebar_hit_rect(&self) -> Rect {
+    /// for the collapse toggle. Chrome, screen bounds, and mouse routing must
+    /// use this, not `view.sidebar_rect`, or the reserved band would be treated
+    /// as lying outside the sidebar entirely.
+    pub(crate) fn sidebar_footprint_rect(&self) -> Rect {
         let full = self.view.sidebar_full_rect;
         if full.width == 0 || full.height == 0 {
             return self.view.sidebar_rect;
@@ -1150,12 +1150,10 @@ mod tests {
         set_test_sidebar_layout(&mut app, Rect::new(0, 0, 4, 20));
         app.state.view.terminal_area = Rect::new(4, 0, 80, 20);
 
-        let toggle = app.state.view.sidebar_toggle_rect;
-        app.handle_mouse(mouse(
-            MouseEventKind::Down(MouseButton::Left),
-            toggle.x,
-            toggle.y,
-        ));
+        // Hard-coded, not read back from the rect the code under test wrote:
+        // a 4-wide rail centres its single cell at column 1 on the last row.
+        assert_eq!(app.state.view.sidebar_toggle_rect, Rect::new(1, 19, 1, 1));
+        app.handle_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 1, 19));
 
         assert!(!app.state.sidebar_collapsed);
     }
@@ -1180,15 +1178,31 @@ mod tests {
         set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
         app.state.view.terminal_area = Rect::new(26, 0, 80, 20);
 
-        let toggle = app.state.view.sidebar_toggle_rect;
-        app.handle_mouse(mouse(
-            MouseEventKind::Down(MouseButton::Left),
-            toggle.x,
-            toggle.y,
-        ));
+        // Hard-coded: the default single cell sits one column short of the
+        // divider, on the last row.
+        assert_eq!(app.state.view.sidebar_toggle_rect, Rect::new(24, 19, 1, 1));
+        app.handle_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 24, 19));
 
         assert!(app.state.sidebar_collapsed);
         assert!(app.state.drag.is_none());
+    }
+
+    #[test]
+    fn reserving_a_toggle_band_does_not_shrink_the_screen_bounds() {
+        // Modals are hit-tested from screen_rect but drawn against the whole
+        // frame. With the tab bar at the bottom, terminal_area stops one row
+        // short, so if screen_rect used the shrunken sidebar body instead of
+        // the footprint the two would disagree and every modal button would be
+        // clickable one row off.
+        let mut app = app_for_mouse_test();
+        app.state.sidebar_toggle_full_width = true;
+        app.state.sidebar_toggle_height = 3;
+        set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
+        // Tab bar at the bottom: the terminal area ends one row above the frame.
+        app.state.view.terminal_area = Rect::new(26, 0, 80, 19);
+
+        assert_eq!(app.state.view.sidebar_rect.height, 17);
+        assert_eq!(app.state.screen_rect().height, 20);
     }
 
     #[test]
