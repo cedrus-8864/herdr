@@ -799,7 +799,11 @@ pub enum ViewLayout {
 
 pub struct ViewState {
     pub layout: ViewLayout,
+    /// Sidebar content area, excluding any band reserved for the collapse
+    /// toggle. Sidebar layout, scrolling, and hit-testing all work from this.
     pub sidebar_rect: Rect,
+    /// The collapse/expand toggle's own band, carved off the sidebar's bottom.
+    pub sidebar_toggle_rect: Rect,
     pub workspace_card_areas: Vec<WorkspaceCardArea>,
     pub tab_bar_rect: Rect,
     pub tab_hit_areas: Vec<Rect>,
@@ -1835,6 +1839,7 @@ impl AppState {
             view: ViewState {
                 layout: ViewLayout::Desktop,
                 sidebar_rect: Rect::default(),
+                sidebar_toggle_rect: Rect::default(),
                 workspace_card_areas: Vec::new(),
                 tab_bar_rect: Rect::default(),
                 tab_hit_areas: Vec::new(),

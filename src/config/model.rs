@@ -820,7 +820,9 @@ pub struct UiConfig {
     /// instead of a single column, for a larger click target. Default: false.
     pub sidebar_toggle_full_width: bool,
     /// Height (rows) of the sidebar collapse/expand toggle, anchored to the
-    /// bottom of the sidebar. Clamped to at least 1. Default: 1.
+    /// bottom of the sidebar. Above 1 row (or any full-width toggle) the band
+    /// is reserved from the sidebar body. Clamped to at least 1 row and at
+    /// most half the sidebar height. Default: 1.
     pub sidebar_toggle_height: u16,
     /// Terminal width at or below which Herdr uses the mobile single-column layout. Default: 64.
     pub mobile_width_threshold: u16,
