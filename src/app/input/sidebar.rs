@@ -534,7 +534,9 @@ mod tests {
     use crossterm::event::{MouseButton, MouseEventKind};
     use ratatui::layout::Rect;
 
-    use super::super::{app_for_mouse_test, capture_snapshot, mouse, unique_temp_path};
+    use super::super::{
+        app_for_mouse_test, capture_snapshot, mouse, set_test_sidebar_layout, unique_temp_path,
+    };
     use crate::{
         app::state::{AgentPanelSort, DragTarget, Mode},
         config::SidebarCollapsedModeConfig,
@@ -1147,7 +1149,7 @@ mod tests {
     fn clicking_collapsed_sidebar_toggle_expands_sidebar() {
         let mut app = app_for_mouse_test();
         app.state.sidebar_collapsed = true;
-        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 4, 20));
+        set_test_sidebar_layout(&mut app, Rect::new(0, 0, 4, 20));
         app.state.view.terminal_area = Rect::new(4, 0, 80, 20);
 
         let toggle = app.state.view.sidebar_toggle_rect;
@@ -1165,7 +1167,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         app.state.sidebar_collapsed = true;
         app.state.sidebar_collapsed_mode = SidebarCollapsedModeConfig::Hidden;
-        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 0, 20));
+        set_test_sidebar_layout(&mut app, Rect::new(0, 0, 0, 20));
         app.state.view.terminal_area = Rect::new(0, 0, 80, 20);
 
         app.handle_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 0, 19));
@@ -1177,7 +1179,7 @@ mod tests {
     fn clicking_expanded_sidebar_toggle_collapses_sidebar() {
         let mut app = app_for_mouse_test();
         app.state.sidebar_collapsed = false;
-        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
+        set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
         app.state.view.terminal_area = Rect::new(26, 0, 80, 20);
 
         let toggle = app.state.view.sidebar_toggle_rect;
@@ -1209,7 +1211,7 @@ mod tests {
         app.state.sidebar_collapsed = false;
         app.state.sidebar_toggle_full_width = true;
         app.state.sidebar_toggle_height = 2;
-        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
+        set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
 
         // Far from the original 1x1 hitbox, but inside the widened toggle band.
         app.handle_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 1, 19));
@@ -1226,7 +1228,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         app.state.sidebar_toggle_full_width = true;
         app.state.sidebar_toggle_height = 3;
-        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
+        set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
 
         assert_eq!(app.state.view.sidebar_rect, Rect::new(0, 0, 26, 17));
         assert_eq!(app.state.view.sidebar_toggle_rect, Rect::new(0, 17, 25, 3));
@@ -1239,7 +1241,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         app.state.sidebar_toggle_full_width = true;
         app.state.sidebar_toggle_height = 999;
-        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
+        set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
 
         // Capped at half the sidebar, so the panels above stay usable.
         assert_eq!(app.state.view.sidebar_toggle_rect.height, 10);
@@ -1936,7 +1938,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         app.state.sidebar_toggle_full_width = true;
         app.state.sidebar_toggle_height = 3;
-        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
+        set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
         let divider_col = app.state.view.sidebar_rect.x + app.state.view.sidebar_rect.width - 1;
         // Bottom row of the shrunken body, i.e. directly above the toggle band.
         let row_above_toggle =
