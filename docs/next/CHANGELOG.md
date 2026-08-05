@@ -4,6 +4,7 @@
 
 ### Added
 - `theme.custom.sidebar_bg` can now give the desktop sidebar its own background without changing built-in theme defaults.
+- Added `ui.sidebar_toggle_full_width` and `ui.sidebar_toggle_height` to enlarge the sidebar collapse/expand toggle beyond its single-cell click target. An enlarged toggle reserves its band at the bottom of the sidebar. (#278)
 - Settings and `ui.status_indicators = "symbols"` can now use distinct static shapes for blocked, working, done, idle, and unknown agent states. (#2260)
 - The plugin marketplace now discovers valid manifests at repository roots and subdirectories, groups multiple plugins under each repository, and publishes their versions and exact default-branch commits.
 

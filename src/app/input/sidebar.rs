@@ -237,38 +237,32 @@ impl AppState {
         if self.sidebar_collapsed {
             return false;
         }
+        // `sidebar_rect` already excludes any band reserved for the toggle, so
+        // the divider never has to exclude the toggle itself.
         let sidebar = self.view.sidebar_rect;
-        let toggle = crate::ui::expanded_sidebar_toggle_rect(
-            sidebar,
-            self.sidebar_toggle_full_width,
-            self.sidebar_toggle_height,
-        );
-        let on_toggle = toggle.width > 0
-            && col >= toggle.x
-            && col < toggle.x + toggle.width
-            && row >= toggle.y
-            && row < toggle.y + toggle.height;
         sidebar.width > 0
-            && !on_toggle
             && col == sidebar.x + sidebar.width.saturating_sub(1)
             && row >= sidebar.y
             && row < sidebar.y + sidebar.height
     }
 
+    /// The sidebar's whole footprint: its content rect plus the band reserved
+    /// for the collapse toggle. Mouse routing must use this, not
+    /// `view.sidebar_rect`, or clicks on a reserved band would be treated as
+    /// landing outside the sidebar entirely.
+    pub(super) fn sidebar_hit_rect(&self) -> Rect {
+        let body = self.view.sidebar_rect;
+        let toggle = self.view.sidebar_toggle_rect;
+        if toggle.width == 0 || toggle.height == 0 {
+            return body;
+        }
+        let top = body.y.min(toggle.y);
+        let bottom = (body.y + body.height).max(toggle.y + toggle.height);
+        Rect::new(body.x, top, body.width, bottom.saturating_sub(top))
+    }
+
     pub(super) fn on_sidebar_toggle(&self, col: u16, row: u16) -> bool {
-        let rect = if self.sidebar_collapsed {
-            crate::ui::collapsed_sidebar_toggle_rect(
-                self.view.sidebar_rect,
-                self.sidebar_toggle_full_width,
-                self.sidebar_toggle_height,
-            )
-        } else {
-            crate::ui::expanded_sidebar_toggle_rect(
-                self.view.sidebar_rect,
-                self.sidebar_toggle_full_width,
-                self.sidebar_toggle_height,
-            )
-        };
+        let rect = self.view.sidebar_toggle_rect;
         rect.width > 0
             && col >= rect.x
             && col < rect.x + rect.width
@@ -1153,14 +1147,10 @@ mod tests {
     fn clicking_collapsed_sidebar_toggle_expands_sidebar() {
         let mut app = app_for_mouse_test();
         app.state.sidebar_collapsed = true;
-        app.state.view.sidebar_rect = Rect::new(0, 0, 4, 20);
+        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 4, 20));
         app.state.view.terminal_area = Rect::new(4, 0, 80, 20);
 
-        let toggle = crate::ui::collapsed_sidebar_toggle_rect(
-            app.state.view.sidebar_rect,
-            app.state.sidebar_toggle_full_width,
-            app.state.sidebar_toggle_height,
-        );
+        let toggle = app.state.view.sidebar_toggle_rect;
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             toggle.x,
@@ -1175,7 +1165,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         app.state.sidebar_collapsed = true;
         app.state.sidebar_collapsed_mode = SidebarCollapsedModeConfig::Hidden;
-        app.state.view.sidebar_rect = Rect::new(0, 0, 0, 20);
+        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 0, 20));
         app.state.view.terminal_area = Rect::new(0, 0, 80, 20);
 
         app.handle_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 0, 19));
@@ -1187,14 +1177,10 @@ mod tests {
     fn clicking_expanded_sidebar_toggle_collapses_sidebar() {
         let mut app = app_for_mouse_test();
         app.state.sidebar_collapsed = false;
-        app.state.view.sidebar_rect = Rect::new(0, 0, 26, 20);
+        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
         app.state.view.terminal_area = Rect::new(26, 0, 80, 20);
 
-        let toggle = crate::ui::expanded_sidebar_toggle_rect(
-            app.state.view.sidebar_rect,
-            app.state.sidebar_toggle_full_width,
-            app.state.sidebar_toggle_height,
-        );
+        let toggle = app.state.view.sidebar_toggle_rect;
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             toggle.x,
@@ -1206,16 +1192,59 @@ mod tests {
     }
 
     #[test]
+    fn default_toggle_does_not_claim_the_widened_band_columns() {
+        // Guards the opt-in: with the default 1x1 toggle, a click one column
+        // in from the sidebar's left edge on the bottom row belongs to the
+        // sidebar body, not the toggle.
+        let mut app = app_for_mouse_test();
+        app.state.sidebar_collapsed = false;
+
+        assert!(!app.state.on_sidebar_toggle(1, 19));
+        assert_eq!(app.state.view.sidebar_rect, Rect::new(0, 0, 26, 20));
+    }
+
+    #[test]
     fn clicking_full_width_expanded_sidebar_toggle_collapses_sidebar() {
         let mut app = app_for_mouse_test();
         app.state.sidebar_collapsed = false;
         app.state.sidebar_toggle_full_width = true;
         app.state.sidebar_toggle_height = 2;
+        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
 
-        // Far from the original 1x1 hitbox, but inside the widened toggle row.
+        // Far from the original 1x1 hitbox, but inside the widened toggle band.
         app.handle_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 1, 19));
 
         assert!(app.state.sidebar_collapsed);
+        assert!(app.state.drag.is_none());
+    }
+
+    #[test]
+    fn reserved_toggle_band_shrinks_the_sidebar_body_so_content_stays_clickable() {
+        // The band must be carved out of the body, not painted over it --
+        // otherwise rows the agent panel still lays out become unclickable
+        // because the toggle is hit-tested first.
+        let mut app = app_for_mouse_test();
+        app.state.sidebar_toggle_full_width = true;
+        app.state.sidebar_toggle_height = 3;
+        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
+
+        assert_eq!(app.state.view.sidebar_rect, Rect::new(0, 0, 26, 17));
+        assert_eq!(app.state.view.sidebar_toggle_rect, Rect::new(0, 17, 25, 3));
+        // Bottom row of the body is owned by content, not by the toggle.
+        assert!(!app.state.on_sidebar_toggle(1, 16));
+    }
+
+    #[test]
+    fn absurd_toggle_height_cannot_swallow_the_whole_sidebar() {
+        let mut app = app_for_mouse_test();
+        app.state.sidebar_toggle_full_width = true;
+        app.state.sidebar_toggle_height = 999;
+        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
+
+        // Capped at half the sidebar, so the panels above stay usable.
+        assert_eq!(app.state.view.sidebar_toggle_rect.height, 10);
+        assert_eq!(app.state.view.sidebar_rect.height, 10);
+        assert!(!app.state.on_sidebar_toggle(1, 9));
     }
 
     #[test]
@@ -1904,10 +1933,11 @@ mod tests {
         let mut app = app_for_mouse_test();
         app.state.sidebar_toggle_full_width = true;
         app.state.sidebar_toggle_height = 3;
+        super::set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
         let divider_col = app.state.view.sidebar_rect.x + app.state.view.sidebar_rect.width - 1;
-        // One row above the 3-row toggle band, still on the divider column.
+        // Bottom row of the shrunken body, i.e. directly above the toggle band.
         let row_above_toggle =
-            app.state.view.sidebar_rect.y + app.state.view.sidebar_rect.height - 4;
+            app.state.view.sidebar_rect.y + app.state.view.sidebar_rect.height - 1;
 
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
@@ -1918,33 +1948,6 @@ mod tests {
             MouseEventKind::Drag(MouseButton::Left),
             divider_col + 5,
             row_above_toggle,
-        ));
-
-        assert_eq!(app.state.sidebar_width, 31);
-    }
-
-    #[test]
-    fn full_width_toggle_still_leaves_the_divider_column_draggable_on_its_own_row() {
-        // The toggle rect always stops one column short of the sidebar's
-        // rightmost column (that column is reserved for the resize divider),
-        // even in full-width mode — so dragging from the divider column must
-        // still resize the sidebar, not collapse it, on every row of the
-        // toggle band including its own bottom row.
-        let mut app = app_for_mouse_test();
-        app.state.sidebar_toggle_full_width = true;
-        app.state.sidebar_toggle_height = 3;
-        let divider_col = app.state.view.sidebar_rect.x + app.state.view.sidebar_rect.width - 1;
-        let bottom_row = app.state.view.sidebar_rect.y + app.state.view.sidebar_rect.height - 1;
-
-        app.handle_mouse(mouse(
-            MouseEventKind::Down(MouseButton::Left),
-            divider_col,
-            bottom_row,
-        ));
-        app.handle_mouse(mouse(
-            MouseEventKind::Drag(MouseButton::Left),
-            divider_col + 5,
-            bottom_row,
         ));
 
         assert_eq!(app.state.sidebar_width, 31);

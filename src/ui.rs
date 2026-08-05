@@ -80,11 +80,11 @@ pub(crate) use self::{
         agent_panel_scroll_for_target, agent_panel_scroll_metrics, agent_panel_scrollbar_rect,
         agent_panel_toggle_rect, all_agent_panel_entries, collapsed_sidebar_sections,
         collapsed_sidebar_toggle_rect, compute_workspace_card_areas, expanded_sidebar_sections,
-        expanded_sidebar_toggle_rect, normalized_workspace_scroll, sidebar_section_divider_rect,
-        workspace_drop_slots, workspace_group_chevron_rect, workspace_list_entries,
-        workspace_list_entries_expanded, workspace_list_rect, workspace_list_scroll_metrics,
-        workspace_list_scrollbar_rect, workspace_parent_group_state, AgentPanelEntry,
-        WorkspaceListEntry,
+        expanded_sidebar_toggle_rect, normalized_workspace_scroll, sidebar_body_rect,
+        sidebar_section_divider_rect, workspace_drop_slots, workspace_group_chevron_rect,
+        workspace_list_entries, workspace_list_entries_expanded, workspace_list_rect,
+        workspace_list_scroll_metrics, workspace_list_scrollbar_rect, workspace_parent_group_state,
+        AgentPanelEntry, WorkspaceListEntry,
     },
 };
 
@@ -234,8 +234,31 @@ fn compute_view_internal(
             .clamp(app.sidebar_min_width, app.sidebar_max_width)
     };
 
-    let [sidebar_area, main_area] =
+    let [full_sidebar_area, main_area] =
         Layout::horizontal([Constraint::Length(sidebar_w), Constraint::Min(1)]).areas(area);
+
+    // The toggle band is carved off the sidebar's bottom once, here, so every
+    // consumer downstream — section layout, scroll metrics, hit-testing — sees
+    // the same content area and nothing ends up drawn under an unclickable
+    // button.
+    let sidebar_toggle_rect = if app.sidebar_collapsed {
+        collapsed_sidebar_toggle_rect(
+            full_sidebar_area,
+            app.sidebar_toggle_full_width,
+            app.sidebar_toggle_height,
+        )
+    } else {
+        expanded_sidebar_toggle_rect(
+            full_sidebar_area,
+            app.sidebar_toggle_full_width,
+            app.sidebar_toggle_height,
+        )
+    };
+    let sidebar_area = sidebar_body_rect(
+        full_sidebar_area,
+        app.sidebar_toggle_full_width,
+        app.sidebar_toggle_height,
+    );
 
     let (tab_bar_rect, terminal_area) = app
         .active
@@ -307,6 +330,7 @@ fn compute_view_internal(
     app.view = crate::app::ViewState {
         layout: ViewLayout::Desktop,
         sidebar_rect: sidebar_area,
+        sidebar_toggle_rect,
         workspace_card_areas,
         tab_bar_rect,
         tab_hit_areas: tab_bar_view.tab_hit_areas,
@@ -370,6 +394,7 @@ fn compute_mobile_view(
     app.view = crate::app::ViewState {
         layout: ViewLayout::Mobile,
         sidebar_rect: Rect::default(),
+        sidebar_toggle_rect: Rect::default(),
         workspace_card_areas: Vec::new(),
         tab_bar_rect: Rect::default(),
         tab_hit_areas: Vec::new(),
