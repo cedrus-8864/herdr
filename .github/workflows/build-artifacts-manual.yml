@@ -16,7 +16,7 @@ on:
       libghostty_optimize:
         description: libghostty-vt optimize mode for this build
         required: true
-        default: ReleaseSafe
+        default: ReleaseFast
         type: choice
         options:
           - ReleaseSafe
@@ -26,7 +26,7 @@ on:
       libghostty_simd:
         description: build libghostty-vt with SIMD-accelerated code paths
         required: true
-        default: 'false'
+        default: 'true'
         type: choice
         options:
           - 'false'
@@ -153,10 +153,13 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           targets: ${{ matrix.target }}
 
-      - name: Install Zig
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
-        with:
-          version: 0.15.2
+      # Upstream Zig 0.15.2 cannot link against the current macOS SDK, so this
+      # matches the patched build ci/release/preview already use.
+      - name: Install patched Zig
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install zig@0.15
+          echo "$(brew --prefix zig@0.15)/bin" >>"$GITHUB_PATH"
+          "$(brew --prefix zig@0.15)/bin/zig" version
 
       - name: Install macOS build tools
         run: brew install cmake ninja
