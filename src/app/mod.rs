@@ -592,6 +592,7 @@ impl App {
             view: state::ViewState {
                 layout: state::ViewLayout::Desktop,
                 sidebar_rect: Rect::default(),
+                sidebar_toggle_rect: Rect::default(),
                 workspace_card_areas: Vec::new(),
                 tab_bar_rect: Rect::default(),
                 tab_hit_areas: Vec::new(),
@@ -3241,6 +3242,31 @@ mod tests {
             app.state.sidebar_collapsed_mode,
             crate::config::SidebarCollapsedModeConfig::Hidden
         );
+
+        std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn reload_config_updates_sidebar_toggle_size() {
+        let _guard = config_env_lock().lock().unwrap();
+        let path = temp_config_path("reload-config-sidebar-toggle-size");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::env::set_var(crate::config::CONFIG_PATH_ENV_VAR, &path);
+
+        let mut app = test_app();
+        assert!(!app.state.sidebar_toggle_full_width);
+        assert_eq!(app.state.sidebar_toggle_height, 1);
+
+        std::fs::write(
+            &path,
+            "[ui]\nsidebar_toggle_full_width = true\nsidebar_toggle_height = 3\n",
+        )
+        .unwrap();
+        let report = app.reload_config();
+        assert_eq!(report.status, crate::config::ConfigReloadStatus::Applied);
+        assert!(app.state.sidebar_toggle_full_width);
+        assert_eq!(app.state.sidebar_toggle_height, 3);
 
         std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());

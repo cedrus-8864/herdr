@@ -185,7 +185,7 @@ impl AppState {
             }
         }
 
-        let sidebar = self.view.sidebar_rect;
+        let sidebar = self.sidebar_hit_rect();
         let in_sidebar = mouse.column >= sidebar.x
             && mouse.column < sidebar.x + sidebar.width
             && mouse.row >= sidebar.y
