@@ -237,9 +237,10 @@ impl AppState {
         if self.sidebar_collapsed {
             return false;
         }
-        // `sidebar_rect` already excludes any band reserved for the toggle, so
-        // the divider never has to exclude the toggle itself.
-        let sidebar = self.view.sidebar_rect;
+        // The divider column runs the sidebar's whole footprint, including any
+        // band reserved for the toggle, so it stays draggable everywhere it is
+        // drawn. The toggle itself never reaches this column.
+        let sidebar = self.sidebar_hit_rect();
         sidebar.width > 0
             && col == sidebar.x + sidebar.width.saturating_sub(1)
             && row >= sidebar.y
@@ -247,18 +248,15 @@ impl AppState {
     }
 
     /// The sidebar's whole footprint: its content rect plus the band reserved
-    /// for the collapse toggle. Mouse routing must use this, not
-    /// `view.sidebar_rect`, or clicks on a reserved band would be treated as
-    /// landing outside the sidebar entirely.
+    /// for the collapse toggle. Chrome and mouse routing must use this, not
+    /// `view.sidebar_rect`, or a reserved band would be treated as landing
+    /// outside the sidebar entirely.
     pub(super) fn sidebar_hit_rect(&self) -> Rect {
-        let body = self.view.sidebar_rect;
-        let toggle = self.view.sidebar_toggle_rect;
-        if toggle.width == 0 || toggle.height == 0 {
-            return body;
+        let full = self.view.sidebar_full_rect;
+        if full.width == 0 || full.height == 0 {
+            return self.view.sidebar_rect;
         }
-        let top = body.y.min(toggle.y);
-        let bottom = (body.y + body.height).max(toggle.y + toggle.height);
-        Rect::new(body.x, top, body.width, bottom.saturating_sub(top))
+        full
     }
 
     pub(super) fn on_sidebar_toggle(&self, col: u16, row: u16) -> bool {
@@ -1931,6 +1929,36 @@ mod tests {
         ));
 
         assert_eq!(app.state.sidebar_width, 31);
+    }
+
+    #[test]
+    fn dragging_sidebar_divider_works_on_the_toggle_band_rows_too() {
+        // The divider column is drawn down the sidebar's whole footprint, so it
+        // has to stay draggable there. Scoping the hit-test to the body made the
+        // bottom rows look draggable while doing nothing.
+        let mut app = app_for_mouse_test();
+        app.state.sidebar_toggle_full_width = true;
+        app.state.sidebar_toggle_height = 3;
+        set_test_sidebar_layout(&mut app, Rect::new(0, 0, 26, 20));
+        let divider_col = 25;
+        let band_row = 19;
+        assert!(app.state.view.sidebar_toggle_rect.height == 3);
+        // The band never reaches the divider column, so this is a drag, not a toggle.
+        assert!(!app.state.on_sidebar_toggle(divider_col, band_row));
+
+        app.handle_mouse(mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            divider_col,
+            band_row,
+        ));
+        app.handle_mouse(mouse(
+            MouseEventKind::Drag(MouseButton::Left),
+            divider_col + 5,
+            band_row,
+        ));
+
+        assert_eq!(app.state.sidebar_width, 31);
+        assert!(!app.state.sidebar_collapsed);
     }
 
     #[test]
