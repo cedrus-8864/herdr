@@ -1,0 +1,81 @@
+name: fork release
+
+# One rolling release that always matches master. This fork has no version of
+# its own, so there is nothing to number.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: true
+
+jobs:
+  macos-aarch64:
+    runs-on: macos-latest
+    env:
+      # What upstream actually ships. ReleaseSafe pulls in a compiler_rt object
+      # that Apple's ld rejects as not 8-byte aligned.
+      LIBGHOSTTY_VT_OPTIMIZE: ReleaseFast
+      LIBGHOSTTY_VT_SIMD: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # v1
+        with:
+          toolchain: 1.96.1
+          targets: aarch64-apple-darwin
+
+      # Zig 0.15.2 as published cannot link against the current macOS SDK.
+      - name: Install patched Zig
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install zig@0.15
+          echo "$(brew --prefix zig@0.15)/bin" >>"$GITHUB_PATH"
+
+      - name: Install build tools
+        run: brew install cmake ninja
+
+      - name: Build
+        run: cargo build --release --locked --target aarch64-apple-darwin
+
+      - name: Package
+        run: |
+          cp target/aarch64-apple-darwin/release/herdr herdr-macos-aarch64
+          shasum -a 256 herdr-macos-aarch64 | tee sha256.txt
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo 'Built from `master` at ${{ github.sha }}.'
+            echo
+            echo 'Upstream herdr plus a sidebar collapse toggle you can hit with a mouse:'
+            echo
+            echo '```toml'
+            echo '[ui]'
+            echo 'sidebar_toggle_full_width = true'
+            echo 'sidebar_toggle_height = 2'
+            echo '```'
+            echo
+            echo '```'
+            cat sha256.txt
+            echo '```'
+            echo
+            echo 'Downloading through a browser sets `com.apple.quarantine` and Gatekeeper'
+            echo 'will refuse to run it; clear it with `xattr -d com.apple.quarantine`'
+            echo 'or fetch it with `gh release download latest` instead.'
+          } >notes.md
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest \
+            --target "$GITHUB_SHA" \
+            --title "latest (master)" \
+            --notes-file notes.md \
+            --prerelease \
+            herdr-macos-aarch64 sha256.txt
