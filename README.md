@@ -1,3 +1,23 @@
+> ### This is a fork
+>
+> It tracks [herdrdev/herdr](https://github.com/herdrdev/herdr) and adds one thing:
+> **a sidebar collapse toggle you can actually hit with a mouse.** Upstream's is a
+> single cell; this makes it configurable.
+>
+> ```toml
+> [ui]
+> sidebar_toggle_full_width = true   # span the sidebar instead of one column
+> sidebar_toggle_height = 2          # rows, capped at half the sidebar
+> ```
+>
+> Both default to upstream's behaviour, so nothing changes unless you opt in.
+> The work is in [#1](https://github.com/cedrus-8864/herdr/pull/1); the reasoning
+> and open questions are in upstream discussion
+> [#2359](https://github.com/herdrdev/herdr/discussions/2359). Not accepted
+> upstream, and it may never be — if you need something supported, use upstream.
+>
+> Everything below is upstream's README, unchanged.
+
 # herdr
 
 
