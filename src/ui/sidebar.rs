@@ -750,7 +750,12 @@ pub(crate) fn collapsed_sidebar_sections(area: Rect) -> (Rect, Option<u16>, Rect
 
 /// Collapsed sidebar: workspace glance on top, compact agent list below.
 pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: Rect) {
-    if area.width == 0 || area.height == 0 {
+    if area.width == 0 {
+        return;
+    }
+    if area.height == 0 {
+        // The band can take every row; bailing would leave it clickable but undrawn.
+        render_sidebar_toggle(app, frame, &app.palette);
         return;
     }
 
@@ -765,16 +770,11 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
     } else {
         Style::default().fg(p.surface_dim)
     };
-    let sep_x = area.x + area.width.saturating_sub(1);
-    let buf = frame.buffer_mut();
-    for y in area.y..area.y + area.height {
-        buf[(sep_x, y)].set_symbol("│");
-        buf[(sep_x, y)].set_style(sep_style);
-    }
+    render_sidebar_separator(app, frame, sep_style);
 
     let (ws_area, divider_y, detail_area) = collapsed_sidebar_sections(area);
     if ws_area == Rect::default() {
-        render_sidebar_toggle(app, frame, area, true, p);
+        render_sidebar_toggle(app, frame, p);
         return;
     }
 
@@ -870,7 +870,7 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
         }
     }
 
-    render_sidebar_toggle(app, frame, area, true, p);
+    render_sidebar_toggle(app, frame, p);
 }
 
 pub(crate) fn workspace_drop_slots(
@@ -986,18 +986,13 @@ pub(super) fn render_sidebar(
         Style::default().fg(p.surface_dim)
     };
 
-    let sep_x = area.x + area.width.saturating_sub(1);
-    let buf = frame.buffer_mut();
-    for y in area.y..area.y + area.height {
-        buf[(sep_x, y)].set_symbol("│");
-        buf[(sep_x, y)].set_style(sep_style);
-    }
+    render_sidebar_separator(app, frame, sep_style);
 
     let (ws_area, detail_area) = expanded_sidebar_sections(area, app.sidebar_section_split);
 
     render_workspace_list(app, terminal_runtimes, frame, ws_area, is_navigating);
     render_agent_detail(app, terminal_runtimes, frame, detail_area);
-    render_sidebar_toggle(app, frame, area, false, p);
+    render_sidebar_toggle(app, frame, p);
 }
 
 fn resolved_token_spans(
@@ -1539,50 +1534,110 @@ fn render_agent_detail(
     }
 }
 
-pub(crate) fn collapsed_sidebar_toggle_rect(area: Rect) -> Rect {
-    let bottom_y = area.y + area.height.saturating_sub(1);
+/// Capped at half the sidebar so an absurd height cannot swallow it whole.
+fn sidebar_toggle_rows(area: Rect, configured_height: u16) -> u16 {
+    let max_rows = (area.height / 2).max(1);
+    configured_height.clamp(1, max_rows)
+}
+
+/// Zero for the legacy single cell, which overlaps the bottom row instead of
+/// reserving it.
+fn sidebar_toggle_reserved_rows(area: Rect, full_width: bool, height: u16) -> u16 {
+    let rows = sidebar_toggle_rows(area, height);
+    if full_width || rows > 1 {
+        rows
+    } else {
+        0
+    }
+}
+
+/// Anchored to the sidebar's bottom edge, stopping short of the divider column.
+pub(crate) fn sidebar_toggle_rect(
+    area: Rect,
+    collapsed: bool,
+    full_width: bool,
+    height: u16,
+) -> Rect {
     let content_w = area.width.saturating_sub(1);
     if content_w == 0 || area.height == 0 {
         return Rect::default();
     }
-    let x = area.x + content_w / 2;
-    Rect::new(x, bottom_y, 1, 1)
+    let h = sidebar_toggle_rows(area, height);
+    let y = area.y + area.height.saturating_sub(h);
+    // Reserved rows must be filled, or they are drawn and clicked by nobody.
+    if sidebar_toggle_reserved_rows(area, full_width, height) > 0 {
+        return Rect::new(area.x, y, content_w, h);
+    }
+    let x = if collapsed {
+        area.x + content_w / 2
+    } else {
+        area.x + content_w.saturating_sub(1)
+    };
+    Rect::new(x, y, 1, h)
 }
 
-pub(crate) fn expanded_sidebar_toggle_rect(area: Rect) -> Rect {
-    if area.width <= 1 || area.height == 0 {
-        return Rect::default();
+/// Spans the full footprint, so the edge does not change colour where the
+/// toggle owns the bottom rows.
+fn render_sidebar_separator(app: &AppState, frame: &mut Frame, sep_style: Style) {
+    let footprint = app.sidebar_footprint_rect();
+    let sep_x = footprint.x + footprint.width.saturating_sub(1);
+    // The band sits outside the rect the sidebar background paints.
+    let style = sep_style.bg(app.palette.sidebar_bg);
+    let buf = frame.buffer_mut();
+    for y in footprint.y..footprint.y + footprint.height {
+        buf[(sep_x, y)].set_symbol("│");
+        buf[(sep_x, y)].set_style(style);
     }
-    Rect::new(
-        area.x + area.width.saturating_sub(2),
-        area.y + area.height.saturating_sub(1),
-        1,
-        1,
+}
+
+/// One call, so body and band can never be derived inconsistently.
+pub(crate) fn split_sidebar(
+    area: Rect,
+    collapsed: bool,
+    full_width: bool,
+    height: u16,
+) -> (Rect, Rect) {
+    let reserved = sidebar_toggle_reserved_rows(area, full_width, height);
+    let body = Rect::new(
+        area.x,
+        area.y,
+        area.width,
+        area.height.saturating_sub(reserved),
+    );
+    (
+        body,
+        sidebar_toggle_rect(area, collapsed, full_width, height),
     )
 }
 
-fn render_sidebar_toggle(
-    app: &AppState,
-    frame: &mut Frame,
-    area: Rect,
-    collapsed: bool,
-    p: &Palette,
-) {
-    let toggle_area = if collapsed {
-        collapsed_sidebar_toggle_rect(area)
-    } else {
-        expanded_sidebar_toggle_rect(area)
-    };
-    if toggle_area == Rect::default() {
+/// Draws into the band `compute_view` reserved, so drawn and clickable regions
+/// cannot disagree.
+fn render_sidebar_toggle(app: &AppState, frame: &mut Frame, p: &Palette) {
+    let toggle_area = app.view.sidebar_toggle_rect;
+    if toggle_area.width == 0 || toggle_area.height == 0 {
         return;
     }
+    let collapsed = app.sidebar_collapsed;
     let icon = if collapsed { "»" } else { "«" };
     let icon_style = if collapsed && app.global_menu_attention_badge_visible() {
         Style::default().fg(p.accent).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(p.overlay0)
     };
-    frame.render_widget(Paragraph::new(Span::styled(icon, icon_style)), toggle_area);
+    // surface1, not surface_dim, which already means separator and active row here.
+    // set_style intersects with the buffer, so a stale larger view clips not panics.
+    if toggle_area.width > 1 || toggle_area.height > 1 {
+        frame
+            .buffer_mut()
+            .set_style(toggle_area, Style::default().bg(p.surface1));
+    }
+    // An even band has no middle row; bias upward, since the lower row reads
+    // as bottom-heavy.
+    let icon_row = toggle_area.y + (toggle_area.height.saturating_sub(1)) / 2;
+    frame.render_widget(
+        Paragraph::new(Span::styled(icon, icon_style)).alignment(Alignment::Center),
+        Rect::new(toggle_area.x, icon_row, toggle_area.width, 1),
+    );
 }
 
 #[cfg(test)]
@@ -2033,16 +2088,18 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
 
     #[test]
     fn render_sidebar_toggle_draws_expanded_collapse_icon() {
-        let app = crate::app::state::AppState::test_new();
         let area = Rect::new(0, 0, 26, 20);
+        let mut app = crate::app::state::AppState::test_new();
+        app.view.sidebar_rect = area;
+        app.view.sidebar_toggle_rect = sidebar_toggle_rect(area, false, false, 1);
         let mut terminal =
             Terminal::new(TestBackend::new(26, 20)).expect("test terminal should initialize");
 
         terminal
-            .draw(|frame| render_sidebar_toggle(&app, frame, area, false, &app.palette))
+            .draw(|frame| render_sidebar_toggle(&app, frame, &app.palette))
             .expect("sidebar toggle should render");
 
-        let toggle = expanded_sidebar_toggle_rect(area);
+        let toggle = app.view.sidebar_toggle_rect;
         assert_eq!(
             terminal.backend().buffer()[(toggle.x, toggle.y)].symbol(),
             "«"
@@ -2052,10 +2109,198 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
     #[test]
     fn expanded_sidebar_toggle_sits_inside_sidebar_content() {
         let area = Rect::new(0, 0, 26, 20);
-        let toggle = expanded_sidebar_toggle_rect(area);
+        let toggle = sidebar_toggle_rect(area, false, false, 1);
 
         assert_eq!(toggle.x, area.x + area.width - 2);
         assert_eq!(toggle.y, area.y + area.height - 1);
+    }
+
+    #[test]
+    fn expanded_sidebar_toggle_full_width_spans_content_excluding_divider() {
+        let area = Rect::new(0, 0, 26, 20);
+        let toggle = sidebar_toggle_rect(area, false, true, 1);
+
+        assert_eq!(toggle.x, area.x);
+        assert_eq!(toggle.width, area.width - 1);
+        assert_eq!(toggle.y, area.y + area.height - 1);
+        assert_eq!(toggle.height, 1);
+    }
+
+    #[test]
+    fn collapsed_sidebar_toggle_full_width_spans_content_excluding_divider() {
+        let area = Rect::new(0, 0, 4, 20);
+        let toggle = sidebar_toggle_rect(area, true, true, 1);
+
+        assert_eq!(toggle.x, area.x);
+        assert_eq!(toggle.width, area.width - 1);
+    }
+
+    #[test]
+    fn sidebar_toggle_height_is_clamped_between_one_and_half_the_sidebar() {
+        let area = Rect::new(0, 0, 26, 20);
+        assert_eq!(sidebar_toggle_rect(area, false, false, 0).height, 1);
+        assert_eq!(sidebar_toggle_rect(area, false, false, 5).height, 5);
+        assert_eq!(sidebar_toggle_rect(area, false, false, 999).height, 10);
+        // A sidebar too short to halve still yields a usable single row.
+        assert_eq!(
+            sidebar_toggle_rect(Rect::new(0, 0, 26, 1), false, false, 9).height,
+            1
+        );
+    }
+
+    #[test]
+    fn a_reserved_band_is_exactly_the_toggle_rect() {
+        let area = Rect::new(0, 0, 26, 20);
+        for collapsed in [false, true] {
+            for full_width in [false, true] {
+                for height in [1u16, 2, 3, 999] {
+                    let (body, toggle) = split_sidebar(area, collapsed, full_width, height);
+                    let reserved = area.height - body.height;
+                    if reserved == 0 {
+                        // Legacy single cell overlapping the bottom row.
+                        assert_eq!(
+                            (toggle.width, toggle.height),
+                            (1, 1),
+                            "{collapsed}/{full_width}/{height}"
+                        );
+                        continue;
+                    }
+                    assert_eq!(
+                        toggle,
+                        Rect::new(area.x, body.y + body.height, area.width - 1, reserved),
+                        "band must fill the reserved rows for {collapsed}/{full_width}/{height}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sidebar_separator_keeps_one_style_across_a_reserved_toggle_band() {
+        let full_sidebar = Rect::new(0, 0, 26, 20);
+        let mut app = crate::app::state::AppState::test_new();
+        app.sidebar_toggle_full_width = true;
+        app.sidebar_toggle_height = 3;
+        let (body, _) = split_sidebar(full_sidebar, false, true, 3);
+        app.view.sidebar_rect = body;
+        app.view.sidebar_full_rect = full_sidebar;
+        app.palette.sidebar_bg = ratatui::style::Color::Rgb(12, 34, 56);
+        let accent = Style::default().fg(app.palette.accent);
+        let mut terminal =
+            Terminal::new(TestBackend::new(26, 20)).expect("test terminal should initialize");
+
+        terminal
+            .draw(|frame| render_sidebar_separator(&app, frame, accent))
+            .expect("separator should render");
+
+        let sep_x = full_sidebar.width - 1;
+        let buffer = terminal.backend().buffer();
+        for y in full_sidebar.y..full_sidebar.y + full_sidebar.height {
+            assert_eq!(buffer[(sep_x, y)].symbol(), "│", "row {y}");
+            assert_eq!(buffer[(sep_x, y)].fg, app.palette.accent, "row {y}");
+            assert_eq!(buffer[(sep_x, y)].bg, app.palette.sidebar_bg, "row {y}");
+        }
+    }
+
+    #[test]
+    fn only_an_enlarged_toggle_reserves_rows_from_the_sidebar_body() {
+        let area = Rect::new(0, 0, 26, 20);
+
+        assert_eq!(split_sidebar(area, false, false, 1).0, area);
+
+        // The band picks up exactly the rows the body gave away.
+        for (full_width, height, expected_body_h) in [(true, 1u16, 19u16), (false, 3, 17)] {
+            let (body, toggle) = split_sidebar(area, false, full_width, height);
+            assert_eq!(
+                body.height, expected_body_h,
+                "body for {full_width}/{height}"
+            );
+            assert_eq!(
+                body.height + toggle.height,
+                area.height,
+                "body + band must tile the sidebar for {full_width}/{height}"
+            );
+            assert_eq!(toggle.y, body.y + body.height, "band sits below the body");
+        }
+    }
+
+    #[test]
+    fn sidebar_toggle_height_grows_upward_from_bottom_edge() {
+        let area = Rect::new(0, 0, 26, 20);
+        let toggle = sidebar_toggle_rect(area, false, true, 4);
+
+        assert_eq!(toggle.y, area.y + area.height - 4);
+        assert_eq!(toggle.height, 4);
+    }
+
+    #[test]
+    fn render_sidebar_toggle_fills_background_when_larger_than_one_cell() {
+        let full_sidebar = Rect::new(0, 0, 26, 20);
+        let mut app = crate::app::state::AppState::test_new();
+        app.sidebar_toggle_full_width = true;
+        app.sidebar_toggle_height = 2;
+        let (body, toggle_rect) = split_sidebar(full_sidebar, false, true, 2);
+        app.view.sidebar_rect = body;
+        app.view.sidebar_toggle_rect = toggle_rect;
+        app.view.sidebar_full_rect = full_sidebar;
+        let mut terminal =
+            Terminal::new(TestBackend::new(26, 20)).expect("test terminal should initialize");
+
+        terminal
+            .draw(|frame| render_sidebar_toggle(&app, frame, &app.palette))
+            .expect("sidebar toggle should render");
+
+        let toggle = app.view.sidebar_toggle_rect;
+        let buffer = terminal.backend().buffer();
+        for y in toggle.y..toggle.y + toggle.height {
+            for x in toggle.x..toggle.x + toggle.width {
+                assert_eq!(buffer[(x, y)].bg, app.palette.surface1);
+            }
+        }
+        // The band stops short of the divider column, which is the sidebar's
+        // own chrome -- see the separator test.
+        assert!(toggle.x + toggle.width < full_sidebar.width);
+        // Explicit row, not a recomputation of the render's own expression:
+        // a 2-row band puts the icon on its upper row.
+        assert_eq!(
+            buffer[(toggle.x + (toggle.width - 1) / 2, toggle.y)].symbol(),
+            "«"
+        );
+    }
+
+    #[test]
+    fn sidebar_toggle_icon_biases_to_the_upper_middle_row() {
+        // Even bands round upward: 2 rows -> first, 4 rows -> second.
+        let full_sidebar = Rect::new(0, 0, 26, 20);
+        for (height, expected_offset) in [(1u16, 0u16), (2, 0), (3, 1), (4, 1), (5, 2), (6, 2)] {
+            let mut app = crate::app::state::AppState::test_new();
+            app.sidebar_toggle_full_width = true;
+            app.sidebar_toggle_height = height;
+            let (body, toggle_rect) = split_sidebar(full_sidebar, false, true, height);
+            app.view.sidebar_rect = body;
+            app.view.sidebar_toggle_rect = toggle_rect;
+            app.view.sidebar_full_rect = full_sidebar;
+            let mut terminal =
+                Terminal::new(TestBackend::new(26, 20)).expect("test terminal should initialize");
+
+            terminal
+                .draw(|frame| render_sidebar_toggle(&app, frame, &app.palette))
+                .expect("sidebar toggle should render");
+
+            let toggle = app.view.sidebar_toggle_rect;
+            assert_eq!(toggle.height, height, "band height for {height}");
+            // Alignment::Center places a single cell at (width - 1) / 2.
+            let icon_x = toggle.x + (toggle.width - 1) / 2;
+            let buffer = terminal.backend().buffer();
+            for offset in 0..toggle.height {
+                let expected = if offset == expected_offset { "«" } else { " " };
+                assert_eq!(
+                    buffer[(icon_x, toggle.y + offset)].symbol(),
+                    expected,
+                    "height {height}, row offset {offset}"
+                );
+            }
+        }
     }
 
     #[test]

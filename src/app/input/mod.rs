@@ -820,9 +820,23 @@ fn app_for_mouse_test() -> App {
     app.state.mode = Mode::Terminal;
     app.state.update_available = None;
     app.state.latest_release_notes_available = false;
-    app.state.view.sidebar_rect = ratatui::layout::Rect::new(0, 0, 26, 20);
+    set_test_sidebar_layout(&mut app, ratatui::layout::Rect::new(0, 0, 26, 20));
     app.state.view.terminal_area = ratatui::layout::Rect::new(26, 0, 80, 20);
     app
+}
+
+/// Lays out the sidebar the way `compute_view` does.
+#[cfg(test)]
+fn set_test_sidebar_layout(app: &mut App, full_sidebar: ratatui::layout::Rect) {
+    let (body, toggle) = crate::ui::split_sidebar(
+        full_sidebar,
+        app.state.sidebar_collapsed,
+        app.state.sidebar_toggle_full_width,
+        app.state.sidebar_toggle_height,
+    );
+    app.state.view.sidebar_rect = body;
+    app.state.view.sidebar_toggle_rect = toggle;
+    app.state.view.sidebar_full_rect = full_sidebar;
 }
 
 #[cfg(test)]

@@ -184,7 +184,7 @@ impl AppState {
             }
         }
 
-        let sidebar = self.view.sidebar_rect;
+        let sidebar = self.sidebar_footprint_rect();
         let in_sidebar = mouse.column >= sidebar.x
             && mouse.column < sidebar.x + sidebar.width
             && mouse.row >= sidebar.y
@@ -964,6 +964,10 @@ impl AppState {
                 }
             }
 
+            // The band is a button, not a list; a wheel there moved the selection.
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+                if in_sidebar && self.on_sidebar_toggle(mouse.column, mouse.row) => {}
+
             MouseEventKind::ScrollUp if in_sidebar => {
                 let agent_area = self.agent_panel_rect();
                 let over_agent_panel = agent_area != Rect::default()
@@ -1214,7 +1218,9 @@ impl AppState {
     }
 
     pub(super) fn screen_rect(&self) -> Rect {
-        let sidebar = self.view.sidebar_rect;
+        // Footprint: render() centres modals from the full frame, so a short
+        // rect here offsets every modal's click target from where it is drawn.
+        let sidebar = self.sidebar_footprint_rect();
         let terminal = self.view.terminal_area;
         let x = sidebar.x.min(terminal.x);
         let y = sidebar.y.min(terminal.y);
