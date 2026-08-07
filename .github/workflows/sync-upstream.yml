@@ -1,0 +1,63 @@
+name: sync upstream
+
+# Only master. The feature branch is left alone on purpose: it is what would be
+# sent upstream, and a rebase that git calls clean is not the same as code that
+# is still correct -- upstream's sidebar_bg change merged without a single
+# conflict and still needed a fix by hand.
+on:
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Merge upstream into master
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git remote add upstream https://github.com/herdrdev/herdr
+          git fetch --quiet upstream
+          behind=$(git rev-list --count HEAD..upstream/master)
+          if [ "$behind" -eq 0 ]; then
+            echo "already in sync with $(git rev-parse --short upstream/master)"
+            exit 0
+          fi
+          echo "merging $behind commits up to $(git rev-parse --short upstream/master)"
+
+          git config user.name 'herdr-sync'
+          git config user.email 'herdr-sync@users.noreply.github.com'
+          if git merge --no-edit upstream/master; then
+            git push
+            exit 0
+          fi
+
+          # A conflict is a decision, not a chore. Leave master untouched.
+          conflicts=$(git diff --diff-filter=U --name-only)
+          git merge --abort
+          {
+            echo "\`master\` is $behind commits behind upstream and the merge conflicts."
+            echo
+            echo 'Conflicting files:'
+            echo '```'
+            echo "$conflicts"
+            echo '```'
+            echo
+            echo 'Resolve it by hand:'
+            echo '```'
+            echo 'git fetch upstream && git checkout master'
+            echo 'git merge upstream/master'
+            echo '```'
+          } >body.md
+          gh issue create --title "sync: merging upstream into master needs hands" --body-file body.md
+          exit 1
