@@ -21,6 +21,12 @@ jobs:
         with:
           ref: master
           fetch-depth: 0
+          # GITHUB_TOKEN is never granted the workflows permission, so the push
+          # is rejected outright whenever upstream touches .github/workflows/.
+          # SYNC_TOKEN is a fine-grained PAT with Contents + Workflows write on
+          # this repo; unset, this falls back and the merge still runs -- it
+          # just cannot land a workflow change.
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
 
       - name: Merge upstream into master
         env:
