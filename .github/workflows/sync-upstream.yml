@@ -37,9 +37,47 @@ jobs:
 
           git config user.name 'herdr-sync'
           git config user.email 'herdr-sync@users.noreply.github.com'
-          if git merge --no-edit upstream/master; then
-            git push
-            exit 0
+
+          # One finding is one issue. Refiling it every run buries the report it
+          # exists to deliver, and the run log carries the detail regardless.
+          file_issue() {
+            open=$(gh issue list --state open --limit 100 --json number,title \
+              --jq "map(select(.title == \"$1\")) | .[0].number // empty")
+            if [ -n "$open" ]; then
+              echo "#$open is open with this title already; not filing another"
+              return
+            fi
+            gh issue create --title "$1" --body-file body.md
+          }
+
+          # Conventional subject: CI validates every pushed commit subject, and
+          # git's default merge wording is not one.
+          if git merge -m 'chore: merge upstream/master' upstream/master; then
+            if git push; then
+              exit 0
+            fi
+            # GITHUB_TOKEN is never granted the workflows permission, so any
+            # upstream commit touching .github/workflows/ rejects this push and
+            # master silently stops moving. Only a token that carries workflow
+            # scope fixes it; until then, fail loudly instead of quietly.
+            {
+              echo 'The merge succeeded but pushing `master` was rejected.'
+              echo
+              echo 'If the log says `without \`workflows\` permission`, upstream'
+              echo 'changed a file under `.github/workflows/` and the built-in'
+              echo '`GITHUB_TOKEN` may not push those. Merge by hand:'
+              echo
+              echo '```'
+              echo 'git fetch upstream && git checkout master'
+              echo "git merge -m 'chore: merge upstream/master' upstream/master"
+              echo 'git push'
+              echo '```'
+              echo
+              echo 'The lasting fix is a token with workflow scope in a secret,'
+              echo 'used for the checkout and push in this workflow.'
+            } >body.md
+            file_issue 'sync: pushing the upstream merge was rejected'
+            exit 1
           fi
 
           # A conflict is a decision, not a chore. Leave master untouched.
@@ -59,5 +97,5 @@ jobs:
             echo 'git merge upstream/master'
             echo '```'
           } >body.md
-          gh issue create --title "sync: merging upstream into master needs hands" --body-file body.md
+          file_issue 'sync: merging upstream into master needs hands'
           exit 1
