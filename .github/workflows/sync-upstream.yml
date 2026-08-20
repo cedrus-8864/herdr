@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
   merge:
@@ -29,8 +28,6 @@ jobs:
           token: ${{ secrets.SYNC_TOKEN || github.token }}
 
       - name: Merge upstream into master
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           git remote add upstream https://github.com/herdrdev/herdr
           git fetch --quiet upstream
@@ -44,16 +41,17 @@ jobs:
           git config user.name 'herdr-sync'
           git config user.email 'herdr-sync@users.noreply.github.com'
 
-          # One finding is one issue. Refiling it every run buries the report it
-          # exists to deliver, and the run log carries the detail regardless.
-          file_issue() {
-            open=$(gh issue list --state open --limit 100 --json number,title \
-              --jq "map(select(.title == \"$1\")) | .[0].number // empty")
-            if [ -n "$open" ]; then
-              echo "#$open is open with this title already; not filing another"
-              return
-            fi
-            gh issue create --title "$1" --body-file body.md
+          # This fork has issues disabled -- GitHub's default for a fork -- so
+          # `gh issue create` here has never worked, and under `set -e` it took
+          # the explanation down with it. The run summary always exists, always
+          # renders, and needs no token or repo setting.
+          report() {
+            {
+              echo "## $1"
+              echo
+              cat body.md
+            } >>"$GITHUB_STEP_SUMMARY"
+            echo "$1 -- written to the run summary"
           }
 
           # Conventional subject: CI validates every pushed commit subject, and
@@ -82,7 +80,7 @@ jobs:
               echo 'The lasting fix is a token with workflow scope in a secret,'
               echo 'used for the checkout and push in this workflow.'
             } >body.md
-            file_issue 'sync: pushing the upstream merge was rejected'
+            report 'sync: pushing the upstream merge was rejected'
             exit 1
           fi
 
@@ -103,5 +101,5 @@ jobs:
             echo 'git merge upstream/master'
             echo '```'
           } >body.md
-          file_issue 'sync: merging upstream into master needs hands'
+          report 'sync: merging upstream into master needs hands'
           exit 1
